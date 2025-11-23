@@ -4,6 +4,7 @@ import time
 from umqtt.simple import MQTTClient
 import neopixel
 import socket
+import json
 import config
 
 # Predefined color palette
@@ -210,23 +211,22 @@ def read_html_file():
 
 def get_colors_json():
     """Return colors dictionary as JSON string"""
-    # Simple JSON serialization for COLORS dict
-    colors_json = '{'
-    items = list(COLORS.items())
-    for i, (name, rgb) in enumerate(items):
-        colors_json += f'"{name}":[{rgb[0]},{rgb[1]},{rgb[2]}]'
-        if i < len(items) - 1:
-            colors_json += ','
-    colors_json += '}'
-    return colors_json
+    return json.dumps(COLORS)
 
 def get_status_json(led_controller, wlan, mqtt_connected):
     """Return system status as JSON string"""
     ip = wlan.ifconfig()[0] if wlan.isconnected() else 'N/A'
     ssid = config.WIFI_SSID if wlan.isconnected() else 'N/A'
 
-    status = f'{{"is_on":{str(led_controller.is_on).lower()},"color":[{led_controller.color[0]},{led_controller.color[1]},{led_controller.color[2]}],"brightness":{led_controller.brightness},"ip":"{ip}","ssid":"{ssid}","mqtt_connected":{str(mqtt_connected).lower()}}}'
-    return status
+    status = {
+        'is_on': led_controller.is_on,
+        'color': list(led_controller.color),
+        'brightness': led_controller.brightness,
+        'ip': ip,
+        'ssid': ssid,
+        'mqtt_connected': mqtt_connected
+    }
+    return json.dumps(status)
 
 def start_web_server(port=80):
     """Start HTTP server on specified port"""
