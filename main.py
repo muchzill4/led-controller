@@ -107,68 +107,70 @@ def connect_wifi():
     print('Network config:', wlan.ifconfig())
     return True
 
+# Command processing shared between MQTT and Web
+def process_command(led_controller, command):
+    """Process LED command and return response message"""
+    try:
+        cmd = command.strip().lower()
+
+        # Simple on/off commands
+        if cmd == 'on':
+            led_controller.turn_on()
+            return f'LEDs turned ON - {led_controller.get_state()}'
+
+        elif cmd == 'off':
+            led_controller.turn_off()
+            return 'LEDs turned OFF'
+
+        # Brightness control: brightness:50
+        elif cmd.startswith('brightness:'):
+            value = int(cmd.split(':')[1])
+            if led_controller.set_brightness(value):
+                return f'Brightness set to {led_controller.brightness}%'
+            else:
+                return 'Error: Brightness must be 0-100'
+
+        # Predefined color: color:red
+        elif cmd.startswith('color:'):
+            color_name = cmd.split(':')[1]
+            if led_controller.set_color_by_name(color_name):
+                return f'Color set to {color_name}: {led_controller.color}'
+            else:
+                return f'Unknown color: {color_name}. Available: {", ".join(COLORS.keys())}'
+
+        # Custom RGB: rgb:255,128,0
+        elif cmd.startswith('rgb:'):
+            rgb_str = cmd.split(':')[1]
+            r, g, b = map(int, rgb_str.split(','))
+            if all(0 <= x <= 255 for x in [r, g, b]):
+                led_controller.set_color((r, g, b))
+                return f'Custom color set: RGB{led_controller.color}'
+            else:
+                return 'Error: RGB values must be 0-255'
+
+        # List available colors
+        elif cmd == 'list' or cmd == 'colors':
+            colors_list = '\n'.join([f'{name}: RGB{rgb}' for name, rgb in COLORS.items()])
+            return f'Available colors:\n{colors_list}'
+
+        # Get current state
+        elif cmd == 'state' or cmd == 'status':
+            return led_controller.get_state()
+
+        else:
+            return f'Unknown command: {command}\nCommands: on, off, brightness:0-100, color:name, rgb:r,g,b, list, state'
+
+    except Exception as e:
+        return f'Error processing command: {e}'
+
 # Create MQTT callback for LED controller
 def create_mqtt_callback(led_controller):
     """Factory function to create MQTT callback with LED controller instance"""
     def mqtt_callback(topic, msg):
-        print(f'Received: {msg}')
-
-        try:
-            message = msg.decode('utf-8').strip()
-            command = message.lower()
-
-            # Simple on/off commands
-            if command == 'on':
-                led_controller.turn_on()
-                print(f'LEDs turned ON - {led_controller.get_state()}')
-
-            elif command == 'off':
-                led_controller.turn_off()
-                print('LEDs turned OFF')
-
-            # Brightness control: brightness:50
-            elif command.startswith('brightness:'):
-                value = int(command.split(':')[1])
-                if led_controller.set_brightness(value):
-                    print(f'Brightness set to {led_controller.brightness}%')
-                else:
-                    print('Brightness must be 0-100')
-
-            # Predefined color: color:red
-            elif command.startswith('color:'):
-                color_name = command.split(':')[1]
-                if led_controller.set_color_by_name(color_name):
-                    print(f'Color set to {color_name}: {led_controller.color}')
-                else:
-                    print(f'Unknown color: {color_name}')
-                    print(f'Available: {", ".join(COLORS.keys())}')
-
-            # Custom RGB: rgb:255,128,0
-            elif command.startswith('rgb:'):
-                rgb_str = command.split(':')[1]
-                r, g, b = map(int, rgb_str.split(','))
-                if all(0 <= x <= 255 for x in [r, g, b]):
-                    led_controller.set_color((r, g, b))
-                    print(f'Custom color set: RGB{led_controller.color}')
-                else:
-                    print('RGB values must be 0-255')
-
-            # List available colors
-            elif command == 'list' or command == 'colors':
-                print('Available colors:')
-                for name, rgb in COLORS.items():
-                    print(f'  {name}: RGB{rgb}')
-
-            # Get current state
-            elif command == 'state' or command == 'status':
-                print(led_controller.get_state())
-
-            else:
-                print(f'Unknown command: {message}')
-                print('Commands: on, off, brightness:0-100, color:name, rgb:r,g,b, list, state')
-
-        except Exception as e:
-            print(f'Error processing message: {e}')
+        message = msg.decode('utf-8')
+        print(f'MQTT Received: {message}')
+        response = process_command(led_controller, message)
+        print(response)
 
     return mqtt_callback
 
@@ -197,8 +199,8 @@ def connect_mqtt(callback):
         return None
 
 # Web server functions
-def get_basic_html():
-    """Return basic HTML page for testing web server"""
+def get_html():
+    """Return HTML page with LED controls"""
     html = """<!DOCTYPE html>
 <html>
 <head>
@@ -207,8 +209,32 @@ def get_basic_html():
 </head>
 <body>
     <h1>ESP32 LED Controller</h1>
-    <p>Web server is running!</p>
-    <p>LED control interface coming soon...</p>
+
+    <div>
+        <h2>Power</h2>
+        <button onclick="sendCommand('on')">ON</button>
+        <button onclick="sendCommand('off')">OFF</button>
+    </div>
+
+    <div>
+        <h2>Brightness</h2>
+        <input type="range" id="brightness" min="0" max="100" value="100" oninput="updateBrightness(this.value)">
+        <span id="brightness-value">100%</span>
+    </div>
+
+    <script>
+        function sendCommand(cmd) {
+            fetch('/api', {
+                method: 'POST',
+                body: cmd
+            }).then(r => r.text()).then(console.log).catch(console.error);
+        }
+
+        function updateBrightness(value) {
+            document.getElementById('brightness-value').innerText = value + '%';
+            sendCommand('brightness:' + value);
+        }
+    </script>
 </body>
 </html>"""
     return html
@@ -228,28 +254,43 @@ def start_web_server(port=80):
         print(f'Failed to start web server: {e}')
         return None
 
-def handle_web_request(server_socket):
-    """Handle incoming web requests (non-blocking)"""
-    try:
-        conn, addr = server_socket.accept()
-        conn.setblocking(False)
+def create_web_handler(led_controller):
+    """Factory function to create web request handler with LED controller instance"""
+    def handle_web_request(server_socket):
+        """Handle incoming web requests (non-blocking)"""
         try:
-            request = conn.recv(1024).decode('utf-8')
+            conn, addr = server_socket.accept()
+            conn.setblocking(False)
+            try:
+                request = conn.recv(1024).decode('utf-8')
 
-            # Simple GET request handling
-            if request.startswith('GET'):
-                html = get_basic_html()
-                response = f'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}'
-                conn.send(response.encode('utf-8'))
+                # Handle GET requests (serve HTML)
+                if request.startswith('GET'):
+                    html = get_html()
+                    response = f'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}'
+                    conn.send(response.encode('utf-8'))
 
-            conn.close()
-        except:
-            conn.close()
-    except OSError:
-        # No connection available (non-blocking)
-        pass
-    except Exception as e:
-        print(f'Error handling web request: {e}')
+                # Handle POST requests to /api (LED commands)
+                elif request.startswith('POST /api'):
+                    # Extract body from request
+                    body_start = request.find('\r\n\r\n')
+                    if body_start != -1:
+                        command = request[body_start + 4:].strip()
+                        print(f'Web API: {command}')
+                        result = process_command(led_controller, command)
+                        response = f'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n{result}'
+                        conn.send(response.encode('utf-8'))
+
+                conn.close()
+            except:
+                conn.close()
+        except OSError:
+            # No connection available (non-blocking)
+            pass
+        except Exception as e:
+            print(f'Error handling web request: {e}')
+
+    return handle_web_request
 
 # Main program
 def main():
@@ -279,6 +320,9 @@ def main():
     if not web_server:
         print('Warning: Web server failed to start')
 
+    # Create web request handler with LED controller
+    web_handler = create_web_handler(led_controller)
+
     print('System ready!')
     print(f'MQTT Topic: {config.MQTT_TOPIC}')
     print('MQTT Commands: on, off, brightness:0-100, color:name, rgb:r,g,b, list')
@@ -291,7 +335,7 @@ def main():
         while True:
             client.check_msg()
             if web_server:
-                handle_web_request(web_server)
+                web_handler(web_server)
             time.sleep(0.01)
     except KeyboardInterrupt:
         print('\nShutting down...')
