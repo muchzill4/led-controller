@@ -293,47 +293,26 @@ def create_web_handler(led_controller, wlan, mqtt_connected_ref):
 
     return handle_web_request
 
-# Main program
-def main():
-    print('Starting ESP32 WS2812 LED Controller')
-    print('=' * 40)
-
-    # Initialize LED controller
-    led_controller = LEDController(config.LED_PIN, config.NUM_LEDS)
-    print(f'Initialized {config.NUM_LEDS} LEDs on pin {config.LED_PIN}')
-
-    # Connect to WiFi
-    wlan = connect_wifi()
-    if not wlan:
-        print('Cannot proceed without WiFi connection')
-        return
-
-    # Create MQTT callback with LED controller
+# Setup functions
+def setup_mqtt(led_controller):
+    """Setup MQTT connection and callback"""
     callback = create_mqtt_callback(led_controller)
-
-    # Connect to MQTT broker
     client = connect_mqtt(callback)
-    mqtt_connected_ref = [client is not None]  # Mutable reference for MQTT status
-    if not client:
-        print('Cannot proceed without MQTT connection')
-        return
+    mqtt_connected_ref = [client is not None]
+    return client, mqtt_connected_ref
 
-    # Start web server
+def setup_web_server(led_controller, wlan, mqtt_connected_ref):
+    """Setup web server and request handler"""
     web_server = start_web_server()
     if not web_server:
         print('Warning: Web server failed to start')
+        return None, None
 
-    # Create web request handler with LED controller and status references
     web_handler = create_web_handler(led_controller, wlan, mqtt_connected_ref)
+    return web_server, web_handler
 
-    print('System ready!')
-    print(f'MQTT Topic: {config.MQTT_TOPIC}')
-    print('MQTT Commands: on, off, brightness:0-100, color:name, rgb:r,g,b, list')
-    if web_server:
-        print('Web interface: http://<ESP32_IP>/')
-    print('=' * 40)
-
-    # Main loop
+def run_main_loop(client, web_server, web_handler, led_controller):
+    """Run the main event loop"""
     try:
         while True:
             client.check_msg()
@@ -356,6 +335,41 @@ def main():
                 web_server.close()
         except:
             pass
+
+# Main program
+def main():
+    print('Starting ESP32 WS2812 LED Controller')
+    print('=' * 40)
+
+    # Initialize LED controller
+    led_controller = LEDController(config.LED_PIN, config.NUM_LEDS)
+    print(f'Initialized {config.NUM_LEDS} LEDs on pin {config.LED_PIN}')
+
+    # Connect to WiFi
+    wlan = connect_wifi()
+    if not wlan:
+        print('Cannot proceed without WiFi connection')
+        return
+
+    # Setup MQTT
+    client, mqtt_connected_ref = setup_mqtt(led_controller)
+    if not client:
+        print('Cannot proceed without MQTT connection')
+        return
+
+    # Setup web server
+    web_server, web_handler = setup_web_server(led_controller, wlan, mqtt_connected_ref)
+
+    # System ready
+    print('System ready!')
+    print(f'MQTT Topic: {config.MQTT_TOPIC}')
+    print('MQTT Commands: on, off, brightness:0-100, color:name, rgb:r,g,b, list')
+    if web_server:
+        print('Web interface: http://<ESP32_IP>/')
+    print('=' * 40)
+
+    # Run main loop
+    run_main_loop(client, web_server, web_handler, led_controller)
 
 if __name__ == '__main__':
     main()
