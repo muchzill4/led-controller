@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 LED Controller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <h1>ESP32 LED Controller</h1>
+
+    <div>
+        <h2>Power</h2>
+        <button onclick="sendCommand('on')">ON</button>
+        <button onclick="sendCommand('off')">OFF</button>
+    </div>
+
+    <div>
+        <h2>Brightness</h2>
+        <input type="range" id="brightness" min="0" max="100" value="100" oninput="updateBrightness(this.value)">
+        <span id="brightness-value">100%</span>
+    </div>
+
+    <div>
+        <h2>Color Picker</h2>
+        <input type="color" id="colorpicker" onchange="setCustomColor(this.value)">
+    </div>
+
+    <div>
+        <h2>Predefined Colors</h2>
+        <div id="color-buttons"></div>
+    </div>
+
+    <script>
+        function sendCommand(cmd) {
+            fetch('/api', {
+                method: 'POST',
+                body: cmd
+            }).then(r => r.text()).then(console.log).catch(console.error);
+        }
+
+        function updateBrightness(value) {
+            document.getElementById('brightness-value').innerText = value + '%';
+            sendCommand('brightness:' + value);
+        }
+
+        function setCustomColor(hexColor) {
+            // Convert hex to RGB
+            const r = parseInt(hexColor.substr(1, 2), 16);
+            const g = parseInt(hexColor.substr(3, 2), 16);
+            const b = parseInt(hexColor.substr(5, 2), 16);
+            sendCommand('rgb:' + r + ',' + g + ',' + b);
+        }
+
+        // Load predefined colors and create buttons
+        fetch('/api/colors')
+            .then(r => r.json())
+            .then(colors => {
+                const container = document.getElementById('color-buttons');
+                for (const [name, rgb] of Object.entries(colors)) {
+                    if (name === 'off') continue;
+                    const [r, g, b] = rgb;
+                    const hexColor = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+                    const btn = document.createElement('button');
+                    btn.textContent = name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    btn.style.backgroundColor = hexColor;
+                    btn.style.color = 'white';
+                    btn.style.border = '2px solid #333';
+                    btn.onclick = () => sendCommand('color:' + name);
+                    container.appendChild(btn);
+                }
+            })
+            .catch(console.error);
+    </script>
+</body>
+</html>

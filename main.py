@@ -199,45 +199,26 @@ def connect_mqtt(callback):
         return None
 
 # Web server functions
-def get_html():
-    """Return HTML page with LED controls"""
-    html = """<!DOCTYPE html>
-<html>
-<head>
-    <title>ESP32 LED Controller</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
-<body>
-    <h1>ESP32 LED Controller</h1>
+def read_html_file():
+    """Read and return HTML file content"""
+    try:
+        with open('index.html', 'r') as f:
+            return f.read()
+    except Exception as e:
+        print(f'Error reading index.html: {e}')
+        return '<html><body><h1>Error loading page</h1></body></html>'
 
-    <div>
-        <h2>Power</h2>
-        <button onclick="sendCommand('on')">ON</button>
-        <button onclick="sendCommand('off')">OFF</button>
-    </div>
-
-    <div>
-        <h2>Brightness</h2>
-        <input type="range" id="brightness" min="0" max="100" value="100" oninput="updateBrightness(this.value)">
-        <span id="brightness-value">100%</span>
-    </div>
-
-    <script>
-        function sendCommand(cmd) {
-            fetch('/api', {
-                method: 'POST',
-                body: cmd
-            }).then(r => r.text()).then(console.log).catch(console.error);
-        }
-
-        function updateBrightness(value) {
-            document.getElementById('brightness-value').innerText = value + '%';
-            sendCommand('brightness:' + value);
-        }
-    </script>
-</body>
-</html>"""
-    return html
+def get_colors_json():
+    """Return colors dictionary as JSON string"""
+    # Simple JSON serialization for COLORS dict
+    colors_json = '{'
+    items = list(COLORS.items())
+    for i, (name, rgb) in enumerate(items):
+        colors_json += f'"{name}":[{rgb[0]},{rgb[1]},{rgb[2]}]'
+        if i < len(items) - 1:
+            colors_json += ','
+    colors_json += '}'
+    return colors_json
 
 def start_web_server(port=80):
     """Start HTTP server on specified port"""
@@ -264,13 +245,19 @@ def create_web_handler(led_controller):
             try:
                 request = conn.recv(1024).decode('utf-8')
 
-                # Handle GET requests (serve HTML)
-                if request.startswith('GET'):
-                    html = get_html()
+                # Handle GET /api/colors (return colors as JSON)
+                if request.startswith('GET /api/colors'):
+                    colors_json = get_colors_json()
+                    response = f'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{colors_json}'
+                    conn.send(response.encode('utf-8'))
+
+                # Handle GET / (serve HTML)
+                elif request.startswith('GET'):
+                    html = read_html_file()
                     response = f'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}'
                     conn.send(response.encode('utf-8'))
 
-                # Handle POST requests to /api (LED commands)
+                # Handle POST /api (LED commands)
                 elif request.startswith('POST /api'):
                     # Extract body from request
                     body_start = request.find('\r\n\r\n')
