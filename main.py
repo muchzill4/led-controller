@@ -3,6 +3,7 @@ import network
 import time
 from umqtt.simple import MQTTClient
 import neopixel
+import socket
 import config
 
 # Predefined color palette
@@ -195,6 +196,61 @@ def connect_mqtt(callback):
         print(f'Failed to connect to MQTT broker: {e}')
         return None
 
+# Web server functions
+def get_basic_html():
+    """Return basic HTML page for testing web server"""
+    html = """<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 LED Controller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <h1>ESP32 LED Controller</h1>
+    <p>Web server is running!</p>
+    <p>LED control interface coming soon...</p>
+</body>
+</html>"""
+    return html
+
+def start_web_server(port=80):
+    """Start HTTP server on specified port"""
+    try:
+        addr = socket.getaddrinfo('0.0.0.0', port)[0][-1]
+        s = socket.socket()
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(addr)
+        s.listen(1)
+        s.setblocking(False)
+        print(f'Web server started on port {port}')
+        return s
+    except Exception as e:
+        print(f'Failed to start web server: {e}')
+        return None
+
+def handle_web_request(server_socket):
+    """Handle incoming web requests (non-blocking)"""
+    try:
+        conn, addr = server_socket.accept()
+        conn.setblocking(False)
+        try:
+            request = conn.recv(1024).decode('utf-8')
+
+            # Simple GET request handling
+            if request.startswith('GET'):
+                html = get_basic_html()
+                response = f'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n{html}'
+                conn.send(response.encode('utf-8'))
+
+            conn.close()
+        except:
+            conn.close()
+    except OSError:
+        # No connection available (non-blocking)
+        pass
+    except Exception as e:
+        print(f'Error handling web request: {e}')
+
 # Main program
 def main():
     print('Starting ESP32 WS2812 LED Controller')
@@ -218,26 +274,39 @@ def main():
         print('Cannot proceed without MQTT connection')
         return
 
+    # Start web server
+    web_server = start_web_server()
+    if not web_server:
+        print('Warning: Web server failed to start')
+
     print('System ready!')
-    print(f'Topic: {config.MQTT_TOPIC}')
-    print('Commands: on, off, brightness:0-100, color:name, rgb:r,g,b, list')
+    print(f'MQTT Topic: {config.MQTT_TOPIC}')
+    print('MQTT Commands: on, off, brightness:0-100, color:name, rgb:r,g,b, list')
+    if web_server:
+        print('Web interface: http://<ESP32_IP>/')
     print('=' * 40)
 
     # Main loop
     try:
         while True:
             client.check_msg()
-            time.sleep(0.1)
+            if web_server:
+                handle_web_request(web_server)
+            time.sleep(0.01)
     except KeyboardInterrupt:
         print('\nShutting down...')
         led_controller.turn_off()
         client.disconnect()
+        if web_server:
+            web_server.close()
         print('Disconnected from MQTT broker')
     except Exception as e:
         print(f'Error in main loop: {e}')
         try:
             led_controller.turn_off()
             client.disconnect()
+            if web_server:
+                web_server.close()
         except:
             pass
 
