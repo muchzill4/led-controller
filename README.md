@@ -5,21 +5,38 @@ Control WS2812 LED strips (NeoPixels) on an ESP32 board using MicroPython, WiFi,
 ## Features
 
 - WiFi connectivity
-- MQTT communication
+- MQTT communication for remote control
+- Modern web interface with real-time status
 - Full RGB color control with predefined color palette
 - Brightness control (0-100%)
 - Support for WS2812/WS2812B LED strips
-- Custom RGB color setting
+- Custom RGB color setting via color picker
 - Clean class-based architecture
 - Error handling and connection management
+- Responsive UI with animations and gradients
 
 ## Hardware Requirements
 
-- ESP32 development board
-- WS2812/WS2812B LED strip
-- 5V power supply (for LED strip)
-- USB cable for programming
-- Optional: Level shifter (3.3V to 5V) for data line
+- **ESP32 development board**
+  - [ESP32-DevKitC on Amazon](https://www.amazon.com/s?k=ESP32+development+board)
+  - [Adafruit ESP32 Feather](https://www.adafruit.com/product/3405)
+  - [SparkFun ESP32 Thing](https://www.sparkfun.com/products/13907)
+
+- **WS2812/WS2812B LED strip**
+  - [Adafruit NeoPixel Strip](https://www.adafruit.com/category/168)
+  - [BTF-LIGHTING WS2812B on Amazon](https://www.amazon.com/s?k=WS2812B+LED+strip)
+  - [AliExpress WS2812B](https://www.aliexpress.com/wholesale?SearchText=ws2812b+led+strip)
+
+- **5V power supply** (for LED strip)
+  - [5V 10A Power Supply on Amazon](https://www.amazon.com/s?k=5V+power+supply+LED)
+  - [Adafruit 5V 4A Supply](https://www.adafruit.com/product/1466)
+  - Note: Calculate ~60mA per LED at full white brightness
+
+- **USB cable** for programming (usually Micro-USB or USB-C depending on board)
+
+- **Optional: Level shifter** (3.3V to 5V) for data line
+  - [Adafruit 4-channel I2C-safe Bi-directional Logic Level Converter](https://www.adafruit.com/product/757)
+  - [SparkFun Logic Level Converter](https://www.sparkfun.com/products/12009)
 
 ## Software Requirements
 
@@ -166,6 +183,21 @@ client.publish("esp32/led/control", "rgb:255,100,50")
 
 client.disconnect()
 ```
+
+### Using the Web Interface
+
+Once the ESP32 is running, you can control the LEDs through a web browser:
+
+1. Find your ESP32's IP address from the serial console output
+2. Open your browser and navigate to `http://<ESP32_IP>/`
+3. Use the web interface to:
+   - Turn LEDs on/off with big colorful buttons
+   - Adjust brightness with a slider
+   - Pick custom colors using the color picker
+   - Select from predefined color palette
+   - View real-time status (LED state, color, brightness, network info)
+
+The web interface updates automatically and works on mobile devices too!
 
 ## Troubleshooting
 
