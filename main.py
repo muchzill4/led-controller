@@ -101,11 +101,11 @@ def connect_wifi():
 
         if not wlan.isconnected():
             print('\nFailed to connect to WiFi')
-            return False
+            return None
 
     print('\nWiFi connected!')
     print('Network config:', wlan.ifconfig())
-    return True
+    return wlan
 
 # Command processing shared between MQTT and Web
 def process_command(led_controller, command):
@@ -220,6 +220,14 @@ def get_colors_json():
     colors_json += '}'
     return colors_json
 
+def get_status_json(led_controller, wlan, mqtt_connected):
+    """Return system status as JSON string"""
+    ip = wlan.ifconfig()[0] if wlan.isconnected() else 'N/A'
+    ssid = config.WIFI_SSID if wlan.isconnected() else 'N/A'
+
+    status = f'{{"is_on":{str(led_controller.is_on).lower()},"color":[{led_controller.color[0]},{led_controller.color[1]},{led_controller.color[2]}],"brightness":{led_controller.brightness},"ip":"{ip}","ssid":"{ssid}","mqtt_connected":{str(mqtt_connected).lower()}}}'
+    return status
+
 def start_web_server(port=80):
     """Start HTTP server on specified port"""
     try:
@@ -235,7 +243,7 @@ def start_web_server(port=80):
         print(f'Failed to start web server: {e}')
         return None
 
-def create_web_handler(led_controller):
+def create_web_handler(led_controller, wlan, mqtt_connected_ref):
     """Factory function to create web request handler with LED controller instance"""
     def handle_web_request(server_socket):
         """Handle incoming web requests (non-blocking)"""
@@ -245,8 +253,14 @@ def create_web_handler(led_controller):
             try:
                 request = conn.recv(1024).decode('utf-8')
 
+                # Handle GET /api/status (return system status)
+                if request.startswith('GET /api/status'):
+                    status_json = get_status_json(led_controller, wlan, mqtt_connected_ref[0])
+                    response = f'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{status_json}'
+                    conn.send(response.encode('utf-8'))
+
                 # Handle GET /api/colors (return colors as JSON)
-                if request.startswith('GET /api/colors'):
+                elif request.startswith('GET /api/colors'):
                     colors_json = get_colors_json()
                     response = f'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{colors_json}'
                     conn.send(response.encode('utf-8'))
@@ -289,7 +303,8 @@ def main():
     print(f'Initialized {config.NUM_LEDS} LEDs on pin {config.LED_PIN}')
 
     # Connect to WiFi
-    if not connect_wifi():
+    wlan = connect_wifi()
+    if not wlan:
         print('Cannot proceed without WiFi connection')
         return
 
@@ -298,6 +313,7 @@ def main():
 
     # Connect to MQTT broker
     client = connect_mqtt(callback)
+    mqtt_connected_ref = [client is not None]  # Mutable reference for MQTT status
     if not client:
         print('Cannot proceed without MQTT connection')
         return
@@ -307,8 +323,8 @@ def main():
     if not web_server:
         print('Warning: Web server failed to start')
 
-    # Create web request handler with LED controller
-    web_handler = create_web_handler(led_controller)
+    # Create web request handler with LED controller and status references
+    web_handler = create_web_handler(led_controller, wlan, mqtt_connected_ref)
 
     print('System ready!')
     print(f'MQTT Topic: {config.MQTT_TOPIC}')

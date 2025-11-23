@@ -29,6 +29,16 @@
         <div id="color-buttons"></div>
     </div>
 
+    <div>
+        <h2>Status</h2>
+        <p><strong>LED State:</strong> <span id="led-state">Loading...</span></p>
+        <p><strong>Color:</strong> <span id="led-color">Loading...</span></p>
+        <p><strong>Brightness:</strong> <span id="led-brightness">Loading...</span></p>
+        <p><strong>IP Address:</strong> <span id="ip-address">Loading...</span></p>
+        <p><strong>WiFi SSID:</strong> <span id="wifi-ssid">Loading...</span></p>
+        <p><strong>MQTT Status:</strong> <span id="mqtt-status">Loading...</span></p>
+    </div>
+
     <script>
         function sendCommand(cmd) {
             fetch('/api', {
@@ -69,6 +79,28 @@
                 }
             })
             .catch(console.error);
+
+        // Update status display
+        function updateStatus() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(status => {
+                    document.getElementById('led-state').textContent = status.is_on ? 'ON' : 'OFF';
+                    const [r, g, b] = status.color;
+                    document.getElementById('led-color').textContent = `RGB(${r}, ${g}, ${b})`;
+                    document.getElementById('led-brightness').textContent = status.brightness + '%';
+                    document.getElementById('ip-address').textContent = status.ip;
+                    document.getElementById('wifi-ssid').textContent = status.ssid;
+                    document.getElementById('mqtt-status').textContent = status.mqtt_connected ? 'Connected' : 'Disconnected';
+                })
+                .catch(err => {
+                    console.error('Failed to fetch status:', err);
+                });
+        }
+
+        // Update status on load and every 2 seconds
+        updateStatus();
+        setInterval(updateStatus, 2000);
     </script>
 </body>
 </html>
